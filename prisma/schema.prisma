@@ -1,0 +1,533 @@
+// FlowPilot — Enterprise AI Operations Agent
+// Prisma schema. See docs/database.md for the reasoning behind these models.
+
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  AGENT
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(VIEWER)
+  jobTitle     String?
+  avatarColor  String   @default("#6366f1")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  conversations     Conversation[]
+  auditLogs         AuditLog[]
+  approvalsRequested Approval[]        @relation("ApprovalRequestedBy")
+  approvalsDecided   Approval[]        @relation("ApprovalDecidedBy")
+  assignedTickets    SupportTicket[]   @relation("TicketAssignee")
+  uploadedDocuments  KnowledgeDocument[]
+  emails             Email[]
+  refunds            Refund[]
+  escalations        Escalation[]      @relation("EscalationAssignee")
+  agentRuns          AgentRun[]
+
+  @@index([role])
+}
+
+// ---------------------------------------------------------------------------
+// Business domain
+// ---------------------------------------------------------------------------
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  PROSPECT
+  CHURNED
+}
+
+model Customer {
+  id              String         @id @default(cuid())
+  reference       String         @unique // CUST-1001
+  name            String
+  email           String         @unique
+  phone           String?
+  company         String?
+  status          CustomerStatus @default(ACTIVE)
+  notes           String?
+  lastContactedAt DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  orders        Order[]
+  tickets       SupportTicket[]
+  emails        Email[]
+  escalations   Escalation[]
+
+  @@index([status])
+  @@index([name])
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
+  FAILED
+}
+
+enum DeliveryStatus {
+  NOT_SHIPPED
+  IN_TRANSIT
+  DELAYED
+  DELIVERED
+  RETURNED
+}
+
+model Order {
+  id                 String         @id @default(cuid())
+  reference          String         @unique // ORD-1004
+  customerId         String
+  customer           Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status             OrderStatus    @default(PENDING)
+  paymentStatus      PaymentStatus  @default(UNPAID)
+  deliveryStatus     DeliveryStatus @default(NOT_SHIPPED)
+  currency           String         @default("INR")
+  // Money is stored in minor units (paise/cents) to avoid floating point drift.
+  totalAmountMinor   Int
+  refundedAmountMinor Int           @default(0)
+  placedAt           DateTime       @default(now())
+  expectedDeliveryAt DateTime?
+  deliveredAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  items   OrderItem[]
+  events  OrderEvent[]
+  refunds Refund[]
+  tickets SupportTicket[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([deliveryStatus])
+  @@index([placedAt])
+}
+
+model OrderItem {
+  id            String @id @default(cuid())
+  orderId       String
+  order         Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sku           String
+  name          String
+  quantity      Int
+  unitPriceMinor Int
+
+  @@index([orderId])
+}
+
+enum ActorType {
+  USER
+  AGENT
+  SYSTEM
+}
+
+model OrderEvent {
+  id          String    @id @default(cuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type        String
+  description String
+  actorType   ActorType @default(SYSTEM)
+  actorLabel  String?
+  createdAt   DateTime  @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+enum RefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Refund {
+  id          String       @id @default(cuid())
+  reference   String       @unique // REF-1001
+  orderId     String
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amountMinor Int
+  currency    String       @default("INR")
+  status      RefundStatus @default(PENDING)
+  reason      String?
+  createdById String?
+  createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  actorType   ActorType    @default(USER)
+  createdAt   DateTime     @default(now())
+
+  @@index([orderId])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  BILLING
+  DELIVERY
+  PRODUCT
+  ACCOUNT
+  OTHER
+}
+
+model SupportTicket {
+  id           String         @id @default(cuid())
+  reference    String         @unique // TKT-1001
+  customerId   String
+  customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId      String?
+  order        Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  subject      String
+  description  String
+  status       TicketStatus   @default(OPEN)
+  priority     TicketPriority @default(MEDIUM)
+  category     TicketCategory @default(OTHER)
+  assignedToId String?
+  assignedTo   User?          @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy    ActorType      @default(USER)
+  resolvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Conversations & agent execution
+// ---------------------------------------------------------------------------
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String   @default("New conversation")
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages    Message[]
+  toolCalls   ToolCall[]
+  approvals   Approval[]
+  auditLogs   AuditLog[]
+  emails      Email[]
+  escalations Escalation[]
+  runs        AgentRun[]
+
+  @@index([userId, updatedAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           MessageRole
+  content        String
+  /// Citations, provider metadata, escalation flags. See src/types/agent.ts
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  toolCalls ToolCall[]
+
+  @@index([conversationId, createdAt])
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ToolCallStatus {
+  PENDING
+  AWAITING_APPROVAL
+  RUNNING
+  SUCCESS
+  FAILED
+  REJECTED
+}
+
+model ToolCall {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+  message        Message?       @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  name           String
+  args           Json
+  result         Json?
+  status         ToolCallStatus @default(PENDING)
+  riskLevel      RiskLevel      @default(LOW)
+  error          String?
+  durationMs     Int?
+  createdAt      DateTime       @default(now())
+  completedAt    DateTime?
+
+  approval Approval?
+
+  @@index([conversationId, createdAt])
+  @@index([name])
+  @@index([status])
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model Approval {
+  id             String         @id @default(cuid())
+  toolCallId     String         @unique
+  toolCall       ToolCall       @relation(fields: [toolCallId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toolName       String
+  args           Json
+  summary        String
+  riskLevel      RiskLevel
+  status         ApprovalStatus @default(PENDING)
+  requestedById  String
+  requestedBy    User           @relation("ApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  decidedById    String?
+  decidedBy      User?          @relation("ApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt      DateTime?
+  decisionNote   String?
+  expiresAt      DateTime
+  createdAt      DateTime       @default(now())
+
+  @@index([status, createdAt])
+}
+
+model AgentRun {
+  id               String    @id @default(cuid())
+  conversationId   String
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider         String
+  model            String
+  status           String // completed | failed | awaiting_approval
+  latencyMs        Int
+  promptTokens     Int       @default(0)
+  completionTokens Int       @default(0)
+  costUsdMicros    Int       @default(0)
+  toolCallCount    Int       @default(0)
+  usedKnowledge    Boolean   @default(false)
+  escalated        Boolean   @default(false)
+  error            String?
+  createdAt        DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([conversationId])
+}
+
+enum EscalationStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model Escalation {
+  id             String           @id @default(cuid())
+  conversationId String?
+  conversation   Conversation?    @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  customerId     String?
+  customer       Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  reason         String
+  summary        String
+  status         EscalationStatus @default(OPEN)
+  assignedToId   String?
+  assignedTo     User?            @relation("EscalationAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  resolvedAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Audit & observability
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id             String          @id @default(cuid())
+  userId         String?
+  user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  conversationId String?
+  conversation   Conversation?   @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  toolCallId     String?
+  action         String
+  tool           String?
+  actorType      ActorType       @default(USER)
+  entityType     String?
+  entityId       String?
+  input          Json?
+  output         Json?
+  success        Boolean         @default(true)
+  riskLevel      RiskLevel       @default(LOW)
+  approvalStatus ApprovalStatus?
+  errorMessage   String?
+  durationMs     Int?
+  createdAt      DateTime        @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([tool])
+  @@index([success])
+  @@index([riskLevel])
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge base (RAG)
+// ---------------------------------------------------------------------------
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model KnowledgeDocument {
+  id            String         @id @default(cuid())
+  title         String
+  filename      String
+  mimeType      String
+  sizeBytes     Int
+  status        DocumentStatus @default(PENDING)
+  chunkCount    Int            @default(0)
+  content       String         @default("")
+  error         String?
+  uploadedById  String?
+  uploadedBy    User?          @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  chunks KnowledgeChunk[]
+
+  @@index([status])
+}
+
+model KnowledgeChunk {
+  id         String            @id @default(cuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  index      Int
+  content    String
+  page       Int?
+  tokenCount Int               @default(0)
+  /// Populated only when the pgvector extension is available (see src/lib/ai/rag/vector-store).
+  embedding  Unsupported("vector(1536)")?
+  /// Portable fallback copy used by the in-database cosine scan when pgvector is absent.
+  embeddingFallback Float[]
+  embeddingModel String
+  createdAt  DateTime          @default(now())
+
+  @@unique([documentId, index])
+  @@index([documentId])
+}
+
+// ---------------------------------------------------------------------------
+// Outbound communication
+// ---------------------------------------------------------------------------
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+model Email {
+  id             String        @id @default(cuid())
+  customerId     String?
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  toEmail        String
+  fromEmail      String
+  subject        String
+  body           String
+  status         EmailStatus   @default(QUEUED)
+  provider       String        @default("mock")
+  actorType      ActorType     @default(AGENT)
+  sentById       String?
+  sentBy         User?         @relation(fields: [sentById], references: [id], onDelete: SetNull)
+  error          String?
+  sentAt         DateTime?
+  createdAt      DateTime      @default(now())
+
+  @@index([createdAt])
+  @@index([customerId])
+}
+
+// ---------------------------------------------------------------------------
+// Organization settings (single row, id = "org")
+// ---------------------------------------------------------------------------
+
+model OrganizationSettings {
+  id                    String   @id @default("org")
+  name                  String   @default("FlowPilot Demo Co.")
+  supportEmail          String   @default("support@flowpilot.demo")
+  defaultCurrency       String   @default("INR")
+  aiProvider            String   @default("mock")
+  aiModel               String   @default("flowpilot-mock-1")
+  autoApproveMediumRisk Boolean  @default(true)
+  maxContextMessages    Int      @default(12)
+  notifyOnApproval      Boolean  @default(true)
+  notifyOnEscalation    Boolean  @default(true)
+  updatedAt             DateTime @updatedAt @default(now())
+}
