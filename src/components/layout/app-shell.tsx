@@ -50,7 +50,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
   };
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex h-dvh overflow-hidden">
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r bg-sidebar transition-transform lg:static lg:translate-x-0",
@@ -163,7 +163,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
           </div>
         </header>
 
-        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} role={user.role} />

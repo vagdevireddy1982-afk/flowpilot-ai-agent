@@ -142,10 +142,10 @@ export function LatencyTrendChart({
 }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <LineChart data={data} margin={{ top: 6, right: 6, left: -12, bottom: 0 }}>
+      <LineChart data={data} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
         <XAxis dataKey="date" tickFormatter={shortDate} {...AXIS_PROPS} />
-        <YAxis width={46} unit="ms" {...AXIS_PROPS} />
+        <YAxis width={58} unit="ms" {...AXIS_PROPS} />
         <Tooltip
           contentStyle={tooltipStyle}
           formatter={(value) => [`${value} ms`, "Average latency"]}

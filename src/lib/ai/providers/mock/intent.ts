@@ -225,9 +225,10 @@ export function planNextStep(input: MockPlanInput): MockPlan {
   const wantsDelayed = has(lower, /\bdelay(ed|s)?\b/, /\blate\b/, /\boverdue\b/, /\bbehind schedule\b/);
   const wantsHuman = has(
     lower,
-    /\b(human|agent|manager|supervisor|real person)\b.*\b(talk|speak|escalate|transfer|hand)/,
+    /\b(talk|speak|transfer|connect|put me)\b.*\b(human|person|manager|supervisor|someone)\b/,
+    /\b(human|person|manager|supervisor|real person)\b.*\b(talk|speak|escalate|transfer|hand)/,
     /\b(escalate|hand off|handoff)\b/,
-    /\b(legal|lawsuit|sue|consumer court|defamation)\b/,
+    /\b(legal|lawyer|attorney|solicitor|lawsuit|sue|suing|consumer court|defamation|ombudsman)\b/,
   );
   const wantsHistory = has(lower, /\b(history|timeline|what happened|events)\b/);
 
@@ -245,7 +246,9 @@ export function planNextStep(input: MockPlanInput): MockPlan {
       kind: "tool",
       name: "escalateToHuman",
       arguments: {
-        reason: /legal|lawsuit|sue|consumer court/.test(lower)
+        reason: /legal|lawyer|attorney|solicitor|lawsuit|sue|suing|consumer court|ombudsman/.test(
+          lower,
+        )
           ? "Potential legal exposure raised by the customer"
           : "Customer explicitly asked for a human operator",
         summary: text.slice(0, 400),

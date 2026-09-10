@@ -44,6 +44,7 @@ export interface ConversationToolCallView {
   error: string | null;
   args: unknown;
   result: ToolResult | null;
+  createdAt: Date;
   approval: {
     id: string;
     status: string;
@@ -102,6 +103,7 @@ export async function getConversationDetail(conversationId: string, userId: stri
         error: call.error,
         args: call.args,
         result: (call.result ?? null) as ToolResult | null,
+        createdAt: call.createdAt,
         approval: call.approval,
       }),
     ),

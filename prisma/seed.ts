@@ -1036,6 +1036,18 @@ async function seedApprovals(
             body: "Hi, apologies for the delay on your order…",
           };
 
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        role: "USER",
+        content:
+          tool === "createRefund"
+            ? `Refund ${order.reference} — the delivery missed our SLA.`
+            : `Send ${order.customerName} an update about ${order.reference}.`,
+        createdAt,
+      },
+    });
+
     const toolCall = await prisma.toolCall.create({
       data: {
         conversationId: conversation.id,
@@ -1067,6 +1079,22 @@ async function seedApprovals(
         decisionNote: decided ? null : "Handled manually by the finance team instead",
         expiresAt: new Date(createdAt.getTime() + 86_400_000),
         createdAt,
+      },
+    });
+
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        role: "ASSISTANT",
+        content: decided
+          ? `Done — ${tool === "createRefund" ? `refund issued on ${order.reference}` : `update sent to ${order.customerName}`}.`
+          : `Understood — I did not run **${tool}**. Nothing was changed.`,
+        metadata: {
+          provider: "mock",
+          model: "flowpilot-mock-1",
+          latencyMs: between(300, 1800),
+        } as never,
+        createdAt: new Date(createdAt.getTime() + 60_000),
       },
     });
 
