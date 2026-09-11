@@ -110,9 +110,40 @@ test.describe("AI agent", () => {
     await page.goto("/agent");
     await expect(page.getByText("Agent access is restricted")).toBeVisible();
   });
+
+  test("sends into the conversation it just opened", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/agent");
+    await expect(page.getByRole("button", { name: "New conversation" })).toBeVisible();
+
+    // No waiting between the two: opening a conversation and sending used to
+    // race, so a second conversation was created and the message landed in the
+    // one the user was not looking at.
+    await page.getByRole("button", { name: "New conversation" }).click();
+    await ask(page, "Show me order ORD-1002.");
+
+    await expect(page.getByText("ORD-1002").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("getOrder").first()).toBeVisible();
+  });
 });
 
 test.describe("knowledge base", () => {
+  test("asks before deleting a document and keeps it when cancelled", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/knowledge");
+
+    const rows = page.locator("tbody tr");
+    await expect(rows.first()).toBeVisible({ timeout: 15_000 });
+    const before = await rows.count();
+
+    await page.locator('button[title="Delete"]').first().click();
+    await expect(page.getByRole("alertdialog")).toContainText("cannot be undone");
+
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("alertdialog")).toBeHidden();
+    await expect(rows).toHaveCount(before);
+  });
+
   test("runs the same semantic search the agent uses", async ({ page }) => {
     await signIn(page);
     await page.goto("/knowledge");

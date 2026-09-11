@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -240,15 +241,23 @@ export function KnowledgeWorkspace({ canWrite }: { canWrite: boolean }) {
                         >
                           <RefreshCw />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title="Delete"
-                          disabled={remove.isPending}
-                          onClick={() => remove.mutate({ id: document.id })}
-                        >
-                          <Trash2 className="text-destructive" />
-                        </Button>
+                        <ConfirmDialog
+                          title={`Delete “${document.title}”?`}
+                          description={`Its ${document.chunkCount} indexed ${
+                            document.chunkCount === 1 ? "passage" : "passages"
+                          } are removed too, so the agent can no longer cite this document. This cannot be undone.`}
+                          onConfirm={() => remove.mutate({ id: document.id })}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Delete"
+                              disabled={remove.isPending}
+                            >
+                              <Trash2 className="text-destructive" />
+                            </Button>
+                          }
+                        />
                       </TableCell>
                     ) : null}
                   </TableRow>

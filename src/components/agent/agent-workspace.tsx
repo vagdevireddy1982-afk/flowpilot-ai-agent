@@ -49,6 +49,7 @@ export function AgentWorkspace({ userName }: { userName: string }) {
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const pendingConversation = useRef<Promise<string> | null>(null);
 
   const conversations = api.agent.conversations.useQuery();
   // Until the user picks one, the transcript shows the most recent conversation.
@@ -113,24 +114,41 @@ export function AgentWorkspace({ userName }: { userName: string }) {
     return map;
   }, [approvals.data]);
 
+  /**
+   * Opens a conversation to send into, reusing one that is already being
+   * created. Without this, typing straight after pressing "New conversation"
+   * opens a second conversation and the message lands in the one the user is
+   * not looking at.
+   */
+  const openConversation = useCallback(
+    async (title?: string) => {
+      pendingConversation.current ??= createConversation
+        .mutateAsync(title ? { title } : {})
+        .then(async (created) => {
+          setSelectedId(created.id);
+          await utils.agent.conversations.invalidate();
+          return created.id;
+        })
+        .finally(() => {
+          pendingConversation.current = null;
+        });
+      return pendingConversation.current;
+    },
+    [createConversation, utils],
+  );
+
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || sendMessage.isPending) return;
 
-      let conversationId = activeId;
-      if (!conversationId) {
-        const created = await createConversation.mutateAsync({ title: trimmed.slice(0, 70) });
-        conversationId = created.id;
-        setSelectedId(created.id);
-        await utils.agent.conversations.invalidate();
-      }
+      const conversationId = activeId ?? (await openConversation(trimmed.slice(0, 70)));
 
       setDraft("");
       setPendingMessage(trimmed);
       sendMessage.mutate({ conversationId, message: trimmed });
     },
-    [activeId, createConversation, sendMessage, utils],
+    [activeId, openConversation, sendMessage],
   );
 
   const messages = conversation.data?.messages ?? [];
@@ -160,11 +178,7 @@ export function AgentWorkspace({ userName }: { userName: string }) {
           conversations={conversations.data ?? []}
           activeId={activeId}
           onSelect={setSelectedId}
-          onNew={async () => {
-            const created = await createConversation.mutateAsync({});
-            setSelectedId(created.id);
-            await utils.agent.conversations.invalidate();
-          }}
+          onNew={() => openConversation()}
           onChanged={async (deletedId) => {
             await utils.agent.conversations.invalidate();
             if (deletedId && deletedId === activeId) setSelectedId(null);

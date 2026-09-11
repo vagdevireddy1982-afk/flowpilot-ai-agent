@@ -3,6 +3,7 @@
 import { MessageSquare, MoreHorizontal, Pencil, Pin, PinOff, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,6 +38,7 @@ export function ConversationList({
 }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const rename = api.agent.renameConversation.useMutation({
     onSuccess: () => {
@@ -149,7 +151,7 @@ export function ConversationList({
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive"
-                          onClick={() => remove.mutate({ id: conversation.id })}
+                          onClick={() => setDeletingId(conversation.id)}
                         >
                           <Trash2 /> Delete
                         </DropdownMenuItem>
@@ -162,6 +164,17 @@ export function ConversationList({
           </ul>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deletingId !== null}
+        onOpenChange={(open) => setDeletingId(open ? deletingId : null)}
+        title="Delete this conversation?"
+        description="Its messages are removed. The tool calls it made stay in the audit log."
+        onConfirm={() => {
+          if (deletingId) remove.mutate({ id: deletingId });
+          setDeletingId(null);
+        }}
+      />
     </div>
   );
 }
