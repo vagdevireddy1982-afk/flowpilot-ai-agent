@@ -49,6 +49,41 @@ describe("chunking", () => {
     expect(chunks.every((chunk) => chunk.content.trim().length > 0)).toBe(true);
   });
 
+  it("starts a new chunk at a markdown heading", () => {
+    const text = [
+      "## Refund window",
+      PARAGRAPH("refund", 30),
+      "## Delivery delays",
+      PARAGRAPH("delivery", 30),
+    ].join("\n\n");
+    const chunks = chunkText(text);
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]!.content).toContain("## Refund window");
+    expect(chunks[0]!.content).not.toContain("## Delivery delays");
+    expect(chunks[1]!.content).toContain("## Delivery delays");
+  });
+
+  it("repeats the heading on every chunk of a section too long for one", () => {
+    const text = ["## Approval thresholds", PARAGRAPH("threshold", 300)].join("\n\n");
+    const chunks = chunkText(text);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.content).toContain("## Approval thresholds");
+    }
+  });
+
+  it("packs a section too small to stand alone with the next one", () => {
+    const text = ["## Scope", "Applies to all orders.", "## Detail", PARAGRAPH("detail", 30)].join(
+      "\n\n",
+    );
+    const chunks = chunkText(text);
+
+    expect(chunks[0]!.content).toContain("## Scope");
+    expect(chunks[0]!.content).toContain("## Detail");
+  });
+
   it("hard-splits a single oversized paragraph", () => {
     const chunks = chunkText(PARAGRAPH("word", 500), { maxChars: 300 });
     expect(chunks.length).toBeGreaterThan(3);

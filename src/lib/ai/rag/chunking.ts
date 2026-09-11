@@ -29,6 +29,9 @@ const DEFAULTS: Required<ChunkOptions> = {
   minChars: 60,
 };
 
+/** A markdown ATX heading, which we treat as the start of a new topic. */
+const HEADING = /^#{1,6}\s+\S/;
+
 function splitSentences(paragraph: string): string[] {
   return paragraph
     .split(/(?<=[.!?])\s+(?=[A-Z0-9"'(])/)
@@ -66,6 +69,8 @@ export function chunkSections(
     });
 
     let buffer = "";
+    /** Heading of the section being read, repeated into its later chunks. */
+    let heading = "";
     const flush = () => {
       const content = buffer.trim();
       if (content.length >= minChars || (content.length > 0 && chunks.length === 0)) {
@@ -85,11 +90,21 @@ export function chunkSections(
     };
 
     for (const block of blocks) {
+      if (HEADING.test(block)) {
+        // Close the current chunk at a section boundary, so one chunk is about
+        // one topic. A section too small to stand alone keeps packing instead.
+        if (buffer.trim().length >= minChars) flush();
+        heading = block;
+      }
+
       const candidate = buffer ? `${buffer}\n\n${block}` : block;
       if (candidate.length > maxChars && buffer) {
         const carry = overlapFrom(buffer, overlapChars);
         flush();
-        buffer = carry ? `${carry}\n\n${block}` : block;
+        // A section long enough to split keeps its heading on every chunk, so
+        // a later chunk still says which section it came from.
+        const prefix = heading && !carry.startsWith(heading) ? heading : "";
+        buffer = [prefix, carry, block].filter(Boolean).join("\n\n");
       } else if (candidate.length > maxChars) {
         // A single oversized block: hard-split it.
         let rest = candidate;

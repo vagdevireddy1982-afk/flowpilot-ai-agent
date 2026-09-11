@@ -395,7 +395,12 @@ that does not:
   the UI renders complete turns.
 - **Mock embeddings are lexical, not semantic.** They are deterministic and
   free, and retrieval quality improves markedly with real embeddings. The
-  hybrid ranking exists to compensate.
+  hybrid ranking exists to compensate, but it still weighs a question's framing
+  words: "according to our refund policy, can a delivered order be refunded?"
+  ranks a chunk that repeats "refund policy" above the one stating the 30-day
+  rule, so the grounded answer can quote a neighbouring section. The citations
+  are real either way — the agent never invents a source — and real embeddings
+  resolve the ordering.
 - **Document ingestion runs inline**, so a very large PDF blocks its request.
   The status state machine is already queue-shaped.
 - **No OCR**, so scanned PDFs are rejected with an explanatory error.

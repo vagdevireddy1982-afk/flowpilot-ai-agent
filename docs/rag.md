@@ -5,7 +5,7 @@
 ```
 upload (PDF / Markdown / text)
   └─ extract text            unpdf for PDFs, keeping page boundaries
-      └─ chunk               paragraph-aware, ~600 chars, 120-char overlap
+      └─ chunk               section-aware, ~600 chars, 120-char overlap
           └─ embed           AIProvider.generateEmbedding → 1536 dims
               └─ store       KnowledgeChunk row + pgvector column
                   └─ search  cosine ranking, relevance floor, citations
@@ -17,12 +17,20 @@ Ingestion is `src/lib/ai/rag/ingest.ts`; retrieval is `retriever.ts`; storage is
 
 ## Chunking
 
-`chunkSections` splits on paragraph boundaries, falls back to sentence
-boundaries for oversized paragraphs, and hard-splits anything still too long.
-Each chunk carries a sliding overlap of the previous chunk's tail so a fact that
-straddles a boundary appears whole in at least one chunk. PDF chunks keep their
-1-based page number, which is what makes "page 3" in a citation true rather than
-decorative.
+`chunkSections` breaks at markdown headings first, then packs paragraphs within
+a section, falls back to sentence boundaries for oversized paragraphs, and
+hard-splits anything still too long. Each chunk carries a sliding overlap of the
+previous chunk's tail so a fact that straddles a boundary appears whole in at
+least one chunk. PDF chunks keep their 1-based page number, which is what makes
+"page 3" in a citation true rather than decorative.
+
+Heading awareness is what keeps a chunk about one thing. Packing purely by size
+produced chunks that began mid-section and ended in the next one, so the chunk
+holding "refunds within 30 days of delivery" also held half of an unrelated
+section, and the section heading was stranded in the chunk before it. Sections
+too small to stand alone still pack together, and a section too long for one
+chunk repeats its heading on each, so a later chunk still says where it came
+from.
 
 Chunks are deliberately small (~600 characters). Larger chunks retrieve more
 reliably but cite imprecisely; at this size a citation points at roughly one
