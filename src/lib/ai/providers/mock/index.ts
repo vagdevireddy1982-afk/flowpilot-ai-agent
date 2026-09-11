@@ -130,17 +130,24 @@ function extractRelevantSentences(question: string, citations: Citation[]): stri
     const sentences = citation.snippet
       .split(/(?<=[.!?])\s+/)
       .map((sentence) => sentence.replace(/^[#\s*-]+/, "").trim())
-      // Drop markdown headings and document front-matter lines.
-      .filter((sentence) => sentence.length > 40 && !/^(version|owner|last reviewed)/i.test(sentence));
+      .filter(
+        (sentence) =>
+          sentence.length > 40 &&
+          // Document front-matter, and fragments the snippet window cut short.
+          !/^(version|owner|last reviewed)/i.test(sentence) &&
+          !sentence.endsWith("…"),
+      );
 
     for (const sentence of sentences) {
-      const terms = tokenize(sentence);
-      if (terms.length === 0) continue;
-      const overlap = terms.filter((term) => questionTerms.has(term)).length;
+      const terms = new Set(tokenize(sentence));
+      if (terms.size === 0) continue;
+      // Distinct terms, so repeating one word from the question does not
+      // outrank a sentence that covers more of it.
+      const matched = [...terms].filter((term) => questionTerms.has(term)).length;
       candidates.push({
         sentence,
         // Prefer sentences that answer the question, then earlier citations.
-        score: overlap / Math.sqrt(terms.length) - index * 0.05,
+        score: matched / Math.sqrt(terms.size) - index * 0.05,
       });
     }
   }
