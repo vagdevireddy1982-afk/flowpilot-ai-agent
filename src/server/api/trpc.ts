@@ -47,16 +47,33 @@ const CODE_MAP: Record<AppError["code"], TRPCError["code"]> = {
   INTERNAL: "INTERNAL_SERVER_ERROR",
 };
 
+/** Turns Zod's field errors into one readable sentence for the UI. */
+function describeFieldErrors(fieldErrors: Record<string, string[] | undefined>): string {
+  const parts = Object.entries(fieldErrors)
+    .map(([field, messages]) => (messages?.[0] ? `${field}: ${messages[0].toLowerCase()}` : null))
+    .filter((part): part is string => part !== null);
+  return parts.length > 0
+    ? `Please check the form — ${parts.join("; ")}.`
+    : "Some of those details are not valid.";
+}
+
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
   errorFormatter({ shape, error }) {
     const cause = error.cause;
+    const fieldErrors = cause instanceof ZodError ? cause.flatten().fieldErrors : null;
     return {
       ...shape,
+      // Zod's own message is a JSON dump of every issue. Clients get the
+      // structured field errors; the message reads as a sentence.
+      message: fieldErrors ? describeFieldErrors(fieldErrors) : shape.message,
+      // Listed rather than spread: tRPC puts a stack on this outside
+      // production, and only curated fields may leave the server.
       data: {
-        ...shape.data,
-        // Only ever surface curated messages; stack traces stay server-side.
-        zodError: cause instanceof ZodError ? cause.flatten().fieldErrors : null,
+        code: shape.data.code,
+        httpStatus: shape.data.httpStatus,
+        path: shape.data.path,
+        zodError: fieldErrors,
         appErrorCode: cause instanceof AppError ? cause.code : null,
       },
     };
@@ -68,25 +85,32 @@ const t = initTRPC.context<TrpcContext>().create({
  * out of client responses.
  */
 const errorBoundary = t.middleware(async ({ next, path, ctx }) => {
-  try {
-    return await next();
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw new TRPCError({ code: CODE_MAP[error.code], message: error.userMessage, cause: error });
-    }
-    if (error instanceof TRPCError) throw error;
+  // A failing middleware or resolver comes back as a result rather than an
+  // exception, so this cannot be a try/catch: tRPC has already wrapped the
+  // original error as `cause` on a TRPCError of its own.
+  const result = await next();
+  if (result.ok) return result;
 
-    logger.error("trpc.unhandled", {
-      path,
-      requestId: ctx.requestId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack?.split("\n").slice(0, 4).join(" | ") : undefined,
-    });
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Something went wrong on our side. Please try again.",
-    });
+  const cause = result.error.cause;
+  if (cause instanceof AppError) {
+    throw new TRPCError({ code: CODE_MAP[cause.code], message: cause.userMessage, cause });
   }
+
+  // Anything tRPC raised deliberately (an unauthorized guard, a bad request,
+  // an unknown procedure) already carries the right code and a safe message.
+  if (result.error.code !== "INTERNAL_SERVER_ERROR") return result;
+
+  const error = cause ?? result.error;
+  logger.error("trpc.unhandled", {
+    path,
+    requestId: ctx.requestId,
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack?.split("\n").slice(0, 4).join(" | ") : undefined,
+  });
+  throw new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: "Something went wrong on our side. Please try again.",
+  });
 });
 
 const timing = t.middleware(async ({ next, path, type }) => {

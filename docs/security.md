@@ -97,6 +97,14 @@ Anything unrecognised is logged server-side with a request id and returned to
 the client as a generic message. Stack traces, SQL errors and provider payloads
 never reach the browser.
 
+Two details make that hold rather than merely intend it. The boundary middleware
+inspects the *result* of `next()` instead of wrapping it in a try/catch: tRPC
+hands a failed middleware or resolver back as `{ ok: false, error }` with the
+original error as `cause`, so a try/catch sees nothing and every permission
+denial would otherwise leave as a 500. And the error formatter lists the fields
+it returns rather than spreading tRPC's shape, because that shape carries a
+stack outside production.
+
 ### 10. Input validation
 
 Zod at every boundary: tRPC inputs, tool arguments, environment, upload route.
