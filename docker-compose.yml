@@ -1,0 +1,23 @@
+services:
+  postgres:
+    # pgvector's image is plain Postgres 16 with the extension preinstalled, so
+    # `CREATE EXTENSION vector` in the first migration just works.
+    image: pgvector/pgvector:pg16
+    container_name: flowpilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flowpilot
+      POSTGRES_PASSWORD: flowpilot
+      POSTGRES_DB: flowpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - flowpilot-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowpilot -d flowpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  flowpilot-postgres:
