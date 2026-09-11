@@ -43,7 +43,7 @@ export function AgentWorkspace({ userName }: { userName: string }) {
   const searchParams = useSearchParams();
   const utils = api.useUtils();
 
-  const [activeId, setActiveId] = useState<string | null>(searchParams.get("c"));
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("c"));
   const [draft, setDraft] = useState(searchParams.get("q") ?? "");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
@@ -51,6 +51,8 @@ export function AgentWorkspace({ userName }: { userName: string }) {
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const conversations = api.agent.conversations.useQuery();
+  // Until the user picks one, the transcript shows the most recent conversation.
+  const activeId = selectedId ?? conversations.data?.[0]?.id ?? null;
   const conversation = api.agent.conversation.useQuery(
     { id: activeId ?? "" },
     { enabled: Boolean(activeId) },
@@ -79,22 +81,13 @@ export function AgentWorkspace({ userName }: { userName: string }) {
     },
   });
 
-  // Keep the URL in sync so a conversation can be linked to and reloaded.
+  // Keep the URL in sync so a conversation can be linked to and reloaded. `q`
+  // is a one-shot prefill that has already been read into `draft`, so it is
+  // dropped rather than carried forward.
   useEffect(() => {
     if (!activeId) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("c", activeId);
-    params.delete("q");
-    router.replace(`/agent?${params.toString()}`, { scroll: false });
-    // Only re-run when the selected conversation changes.
-
-  }, [activeId]);
-
-  // Select the most recent conversation on first load.
-  useEffect(() => {
-    if (activeId || !conversations.data || conversations.data.length === 0) return;
-    setActiveId(conversations.data[0]!.id);
-  }, [activeId, conversations.data]);
+    router.replace(`/agent?c=${encodeURIComponent(activeId)}`, { scroll: false });
+  }, [activeId, router]);
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({
@@ -129,7 +122,7 @@ export function AgentWorkspace({ userName }: { userName: string }) {
       if (!conversationId) {
         const created = await createConversation.mutateAsync({ title: trimmed.slice(0, 70) });
         conversationId = created.id;
-        setActiveId(created.id);
+        setSelectedId(created.id);
         await utils.agent.conversations.invalidate();
       }
 
@@ -166,15 +159,15 @@ export function AgentWorkspace({ userName }: { userName: string }) {
         <ConversationList
           conversations={conversations.data ?? []}
           activeId={activeId}
-          onSelect={setActiveId}
+          onSelect={setSelectedId}
           onNew={async () => {
             const created = await createConversation.mutateAsync({});
-            setActiveId(created.id);
+            setSelectedId(created.id);
             await utils.agent.conversations.invalidate();
           }}
           onChanged={async (deletedId) => {
             await utils.agent.conversations.invalidate();
-            if (deletedId && deletedId === activeId) setActiveId(null);
+            if (deletedId && deletedId === activeId) setSelectedId(null);
           }}
         />
       </aside>

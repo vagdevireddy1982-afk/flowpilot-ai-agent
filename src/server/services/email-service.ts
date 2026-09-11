@@ -44,16 +44,16 @@ export async function sendCustomerEmail(input: SendCustomerEmailInput) {
       body: input.body,
     });
 
-    const [sent] = await Promise.all([
-      prisma.email.update({
-        where: { id: email.id },
-        data: { status: "SENT", sentAt: result.deliveredAt },
-      }),
-      prisma.customer.update({
-        where: { id: customer.id },
-        data: { lastContactedAt: result.deliveredAt },
-      }),
-    ]);
+    // Sequential on purpose: the driver adapter serialises queries on a single
+    // connection, and a write pair like this is not worth a second one.
+    const sent = await prisma.email.update({
+      where: { id: email.id },
+      data: { status: "SENT", sentAt: result.deliveredAt },
+    });
+    await prisma.customer.update({
+      where: { id: customer.id },
+      data: { lastContactedAt: result.deliveredAt },
+    });
     return { email: sent, customer };
   } catch (error) {
     await prisma.email.update({

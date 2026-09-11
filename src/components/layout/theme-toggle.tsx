@@ -2,7 +2,6 @@
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,15 +11,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const { setTheme } = useTheme();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon-sm">
-          {mounted && theme === "dark" ? <Moon /> : <Sun />}
+          {/* CSS picks the icon so the server and client render the same markup. */}
+          <Sun className="dark:hidden" />
+          <Moon className="hidden dark:block" />
           <span className="sr-only">Change theme</span>
         </Button>
       </DropdownMenuTrigger>

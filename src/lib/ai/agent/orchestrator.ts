@@ -17,7 +17,6 @@ import type {
   Citation,
   ToolResult,
 } from "@/types/agent";
-import type { Role } from "@/generated/prisma/enums";
 
 /** Safety valve against a model that keeps requesting tools forever. */
 const MAX_TOOL_STEPS = 5;
@@ -31,25 +30,18 @@ export interface AgentTurnInput {
   message: string;
 }
 
-interface TurnUser {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-}
-
 export async function runAgentTurn(input: AgentTurnInput): Promise<AgentTurnResult> {
   const startedAt = Date.now();
   await agentRateLimiter.check(`agent:${input.userId}`);
 
-  const [user, settings, conversation] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: input.userId },
-      select: { id: true, name: true, email: true, role: true },
-    }),
-    getSettings(),
-    prisma.conversation.findUnique({ where: { id: input.conversationId } }),
-  ]);
+  const user = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { id: true, name: true, email: true, role: true },
+  });
+  const settings = await getSettings();
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: input.conversationId },
+  });
 
   if (!user) throw notFound("User", input.userId);
   if (!conversation) throw notFound("Conversation", input.conversationId);
@@ -330,13 +322,11 @@ export async function resumeAfterApproval(input: {
   });
   if (!approval) throw notFound("Approval", input.approvalId);
 
-  const [user, settings] = await Promise.all([
-    prisma.user.findUniqueOrThrow({
-      where: { id: approval.conversation.userId },
-      select: { id: true, name: true, email: true, role: true },
-    }),
-    getSettings(),
-  ]);
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: approval.conversation.userId },
+    select: { id: true, name: true, email: true, role: true },
+  });
+  const settings = await getSettings();
 
   const provider = getAIProvider();
   const toolContext: ToolContext = {
@@ -455,17 +445,18 @@ async function persistAssistantMessage(
   content: string,
   metadata: AssistantMessageMetadata,
 ) {
-  const [message] = await Promise.all([
-    prisma.message.create({
-      data: {
-        conversationId,
-        role: "ASSISTANT",
-        content,
-        metadata: metadata as never,
-      },
-    }),
-    prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } }),
-  ]);
+  const message = await prisma.message.create({
+    data: {
+      conversationId,
+      role: "ASSISTANT",
+      content,
+      metadata: metadata as never,
+    },
+  });
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { updatedAt: new Date() },
+  });
   return message;
 }
 

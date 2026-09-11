@@ -27,12 +27,11 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  useEffect(() => setMobileOpen(false), [pathname]);
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
+        setMobileOpen(false);
         setPaletteOpen((open) => !open);
       }
     };
@@ -75,7 +74,8 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
           </Button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2.5 py-4">
+        {/* Following any link dismisses the mobile drawer; on desktop it is always open. */}
+        <nav className="flex-1 overflow-y-auto px-2.5 py-4" onClick={() => setMobileOpen(false)}>
           {NAV_SECTIONS.map((section) => {
             const items = section.items.filter((item) => hasPermission(user.role, item.permission));
             if (items.length === 0) return null;

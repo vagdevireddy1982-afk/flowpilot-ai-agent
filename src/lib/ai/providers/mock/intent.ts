@@ -475,9 +475,13 @@ function derivePriority(lower: string): "LOW" | "MEDIUM" | "HIGH" | "URGENT" {
 }
 
 function deriveCategory(lower: string): "BILLING" | "DELIVERY" | "PRODUCT" | "ACCOUNT" | "OTHER" {
-  if (/\b(refund|payment|invoice|charge|billing|money)\b/.test(lower)) return "BILLING";
-  if (/\b(deliver|shipping|courier|dispatch|delay|late|tracking)\b/.test(lower)) return "DELIVERY";
-  if (/\b(defect|broken|damaged|faulty|quality|product)\b/.test(lower)) return "PRODUCT";
+  // Prefixes rather than whole words: "delayed", "shipping" and "refunded" all
+  // need to land on the same category as their stems.
+  if (/\b(refund\w*|payment\w*|invoice\w*|charge\w*|billing|money)\b/.test(lower)) return "BILLING";
+  if (/\b(deliver\w*|ship\w*|courier|dispatch\w*|delay\w*|late|tracking)\b/.test(lower)) {
+    return "DELIVERY";
+  }
+  if (/\b(defect\w*|broken|damaged?|faulty|quality|product\w*)\b/.test(lower)) return "PRODUCT";
   if (/\b(login|account|password|profile|address)\b/.test(lower)) return "ACCOUNT";
   return "OTHER";
 }
