@@ -149,6 +149,25 @@ describe("planNextStep", () => {
     expect(third).toMatchObject({ name: "sendCustomerEmail", arguments: { customerId: "cus_2" } });
   });
 
+  it("emails about the order the request named, not the first delayed one", () => {
+    const question =
+      "Send a follow-up email to Priya Sharma apologising that order ORD-1005 is delayed.";
+    const orders = [
+      { customerId: "cus_1", customerName: "Priya Sharma", reference: "ORD-1004" },
+      { customerId: "cus_2", customerName: "Priya Sharma", reference: "ORD-1005" },
+    ];
+
+    const plan = planNextStep({
+      userMessage: question,
+      steps: [ok("getOrder", { reference: "ORD-1005" }), ok("searchOrders", { orders })],
+    });
+
+    expect(plan).toMatchObject({ name: "sendCustomerEmail", arguments: { customerId: "cus_2" } });
+    if (plan.kind !== "tool") throw new Error("expected a tool call");
+    expect(String(plan.arguments.subject)).toContain("ORD-1005");
+    expect(String(plan.arguments.body)).not.toContain("ORD-1004");
+  });
+
   it("escalates legal threats and explicit requests for a person", () => {
     expect(
       planNextStep({ userMessage: "My lawyer will be in touch about this.", steps: [] }),

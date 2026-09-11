@@ -317,9 +317,17 @@ export function planNextStep(input: MockPlanInput): MockPlan {
   if (wantsEmail) {
     const delayedStep = stepFor(steps, "searchOrders");
     const emailed = steps.filter((step) => step.name === "sendCustomerEmail").length;
-    const targets =
+    const found =
       (delayedStep?.result?.data as { orders?: Array<Record<string, unknown>> } | undefined)
         ?.orders ?? [];
+    // An order named in the request pins the email to that order. Without this,
+    // "email Priya about ORD-1004" writes to her about whichever order the
+    // delayed-orders report happened to list first. Only an explicit reference
+    // pins it: `orderRef` also picks one up from earlier steps, which would
+    // reduce "email every delayed customer" to a single message.
+    const targets = explicitOrderRef
+      ? found.filter((order) => (order as { reference?: string }).reference === explicitOrderRef)
+      : found;
 
     if (targets.length > 0 && emailed < Math.min(targets.length, 3)) {
       const target = targets[emailed] as {
@@ -349,7 +357,9 @@ export function planNextStep(input: MockPlanInput): MockPlan {
           name: "sendCustomerEmail",
           arguments: {
             customerId: knownCustomerId,
-            subject: "An update from our operations team",
+            subject: orderRef
+              ? `Update on your order ${orderRef}`
+              : "An update from our operations team",
             body: buildDelayEmail("there", orderRef ?? "your recent order"),
           },
         };
